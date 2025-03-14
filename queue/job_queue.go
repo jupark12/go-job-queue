@@ -13,38 +13,38 @@ import (
 	"github.com/jupark12/karaoke-worker/models"
 )
 
-// AudioJobQueue manages the queue of audio processing jobs
-type AudioJobQueue struct {
+// PDFJobQueue manages the queue of pdf processing jobs
+type PDFJobQueue struct {
 	mu             sync.RWMutex
-	pendingJobs    []*models.AudioJob
-	processingJobs map[string]*models.AudioJob
-	completedJobs  map[string]*models.AudioJob
-	failedJobs     map[string]*models.AudioJob
-	jobsByID       map[string]*models.AudioJob
+	pendingJobs    []*models.PDFJob
+	processingJobs map[string]*models.PDFJob
+	completedJobs  map[string]*models.PDFJob
+	failedJobs     map[string]*models.PDFJob
+	jobsByID       map[string]*models.PDFJob
 	dataDir        string
-	jobUpdateChan  chan *models.AudioJob
+	jobUpdateChan  chan *models.PDFJob
 }
 
-// NewAudioJobQueue creates a new instance of AudioJobQueue
-func NewAudioJobQueue(dataDir string) *AudioJobQueue {
+// NewPDFJobQueue creates a new instance of PDFJobQueue
+func NewPDFJobQueue(dataDir string) *PDFJobQueue {
 	// Ensure data directory exists
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		log.Fatalf("Failed to create data directory: %v", err)
 	}
 
-	return &AudioJobQueue{
-		pendingJobs:    make([]*models.AudioJob, 0),
-		processingJobs: make(map[string]*models.AudioJob),
-		completedJobs:  make(map[string]*models.AudioJob),
-		failedJobs:     make(map[string]*models.AudioJob),
-		jobsByID:       make(map[string]*models.AudioJob),
+	return &PDFJobQueue{
+		pendingJobs:    make([]*models.PDFJob, 0),
+		processingJobs: make(map[string]*models.PDFJob),
+		completedJobs:  make(map[string]*models.PDFJob),
+		failedJobs:     make(map[string]*models.PDFJob),
+		jobsByID:       make(map[string]*models.PDFJob),
 		dataDir:        dataDir,
-		jobUpdateChan:  make(chan *models.AudioJob, 100),
+		jobUpdateChan:  make(chan *models.PDFJob, 100),
 	}
 }
 
 // EnqueueJob adds a new job to the queue
-func (q *AudioJobQueue) EnqueueJob(sourceFile string) (*models.AudioJob, error) {
+func (q *PDFJobQueue) EnqueueJob(sourceFile string) (*models.PDFJob, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -56,7 +56,7 @@ func (q *AudioJobQueue) EnqueueJob(sourceFile string) (*models.AudioJob, error) 
 	baseName := filepath.Base(sourceFile[:len(sourceFile)-len(ext)])
 	outputFile := fmt.Sprintf("%s_karaoke%s", baseName, ext)
 
-	job := &models.AudioJob{
+	job := &models.PDFJob{
 		ID:         jobID,
 		SourceFile: sourceFile,
 		OutputFile: outputFile,
@@ -77,7 +77,7 @@ func (q *AudioJobQueue) EnqueueJob(sourceFile string) (*models.AudioJob, error) 
 }
 
 // DequeueJob gets the next pending job and marks it as processing
-func (q *AudioJobQueue) DequeueJob(workerID string) (*models.AudioJob, error) {
+func (q *PDFJobQueue) DequeueJob(workerID string) (*models.PDFJob, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -106,7 +106,7 @@ func (q *AudioJobQueue) DequeueJob(workerID string) (*models.AudioJob, error) {
 }
 
 // CompleteJob marks a job as completed
-func (q *AudioJobQueue) CompleteJob(jobID string) error {
+func (q *PDFJobQueue) CompleteJob(jobID string) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -130,7 +130,7 @@ func (q *AudioJobQueue) CompleteJob(jobID string) error {
 }
 
 // FailJob marks a job as failed
-func (q *AudioJobQueue) FailJob(jobID string, errorMsg string) error {
+func (q *PDFJobQueue) FailJob(jobID string, errorMsg string) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -155,7 +155,7 @@ func (q *AudioJobQueue) FailJob(jobID string, errorMsg string) error {
 }
 
 // GetJob retrieves a job by ID
-func (q *AudioJobQueue) GetJob(jobID string) (*models.AudioJob, error) {
+func (q *PDFJobQueue) GetJob(jobID string) (*models.PDFJob, error) {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
@@ -168,7 +168,7 @@ func (q *AudioJobQueue) GetJob(jobID string) (*models.AudioJob, error) {
 }
 
 // persistJob saves job data to disk
-func (q *AudioJobQueue) persistJob(job *models.AudioJob) error {
+func (q *PDFJobQueue) persistJob(job *models.PDFJob) error {
 	jobPath := filepath.Join(q.dataDir, job.ID+".json")
 
 	data, err := json.MarshalIndent(job, "", "  ")
@@ -184,7 +184,7 @@ func (q *AudioJobQueue) persistJob(job *models.AudioJob) error {
 }
 
 // LoadJobs loads all persisted jobs from disk
-func (q *AudioJobQueue) LoadJobs() error {
+func (q *PDFJobQueue) LoadJobs() error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -205,7 +205,7 @@ func (q *AudioJobQueue) LoadJobs() error {
 			continue
 		}
 
-		var job models.AudioJob
+		var job models.PDFJob
 		if err := json.Unmarshal(data, &job); err != nil {
 			log.Printf("Failed to unmarshal job data %s: %v", jobPath, err)
 			continue
@@ -231,21 +231,21 @@ func (q *AudioJobQueue) LoadJobs() error {
 }
 
 // GetPendingJobs returns a copy of the pending jobs slice
-func (q *AudioJobQueue) GetPendingJobs() []*models.AudioJob {
+func (q *PDFJobQueue) GetPendingJobs() []*models.PDFJob {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
-	jobs := make([]*models.AudioJob, len(q.pendingJobs))
+	jobs := make([]*models.PDFJob, len(q.pendingJobs))
 	copy(jobs, q.pendingJobs)
 	return jobs
 }
 
 // GetProcessingJobs returns a copy of the processing jobs map
-func (q *AudioJobQueue) GetProcessingJobs() []*models.AudioJob {
+func (q *PDFJobQueue) GetProcessingJobs() []*models.PDFJob {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
-	jobs := make([]*models.AudioJob, 0, len(q.processingJobs))
+	jobs := make([]*models.PDFJob, 0, len(q.processingJobs))
 	for _, job := range q.processingJobs {
 		jobs = append(jobs, job)
 	}
@@ -253,11 +253,11 @@ func (q *AudioJobQueue) GetProcessingJobs() []*models.AudioJob {
 }
 
 // GetCompletedJobs returns a copy of the completed jobs map
-func (q *AudioJobQueue) GetCompletedJobs() []*models.AudioJob {
+func (q *PDFJobQueue) GetCompletedJobs() []*models.PDFJob {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
-	jobs := make([]*models.AudioJob, 0, len(q.completedJobs))
+	jobs := make([]*models.PDFJob, 0, len(q.completedJobs))
 	for _, job := range q.completedJobs {
 		jobs = append(jobs, job)
 	}
@@ -265,11 +265,11 @@ func (q *AudioJobQueue) GetCompletedJobs() []*models.AudioJob {
 }
 
 // GetFailedJobs returns a copy of the failed jobs map
-func (q *AudioJobQueue) GetFailedJobs() []*models.AudioJob {
+func (q *PDFJobQueue) GetFailedJobs() []*models.PDFJob {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
-	jobs := make([]*models.AudioJob, 0, len(q.failedJobs))
+	jobs := make([]*models.PDFJob, 0, len(q.failedJobs))
 	for _, job := range q.failedJobs {
 		jobs = append(jobs, job)
 	}
@@ -277,11 +277,11 @@ func (q *AudioJobQueue) GetFailedJobs() []*models.AudioJob {
 }
 
 // GetAllJobs returns a copy of all jobs
-func (q *AudioJobQueue) GetAllJobs() []*models.AudioJob {
+func (q *PDFJobQueue) GetAllJobs() []*models.PDFJob {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
-	jobs := make([]*models.AudioJob, 0, len(q.jobsByID))
+	jobs := make([]*models.PDFJob, 0, len(q.jobsByID))
 	for _, job := range q.jobsByID {
 		jobs = append(jobs, job)
 	}
@@ -289,6 +289,6 @@ func (q *AudioJobQueue) GetAllJobs() []*models.AudioJob {
 }
 
 // GetJobUpdateChannel returns the job update channel
-func (q *AudioJobQueue) GetJobUpdateChannel() <-chan *models.AudioJob {
+func (q *PDFJobQueue) GetJobUpdateChannel() <-chan *models.PDFJob {
 	return q.jobUpdateChan
 }

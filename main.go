@@ -17,7 +17,7 @@ func main() {
 	numWorkers := 4
 
 	// Initialize the job queue
-	jobQueue := queue.NewAudioJobQueue(dataDir)
+	jobQueue := queue.NewPDFJobQueue(dataDir)
 
 	// Load existing jobs
 	if err := jobQueue.LoadJobs(); err != nil {
@@ -30,7 +30,7 @@ func main() {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 
-	log.Printf("Audio processing broker started with %d workers", numWorkers)
+	log.Printf("PDF processing broker started with %d workers", numWorkers)
 
 	// Set up signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)

@@ -16,13 +16,13 @@ import (
 
 // Server handles HTTP requests for job management
 type Server struct {
-	queue    *queue.AudioJobQueue
+	queue    *queue.PDFJobQueue
 	workers  []*worker.Worker
 	httpAddr string
 }
 
 // NewServer creates a new server instance
-func NewServer(queue *queue.AudioJobQueue, httpAddr string, numWorkers int) *Server {
+func NewServer(queue *queue.PDFJobQueue, httpAddr string, numWorkers int) *Server {
 	server := &Server{
 		queue:    queue,
 		httpAddr: httpAddr,
@@ -65,9 +65,9 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		// Create a new job
 		r.ParseMultipartForm(10 << 20) // 10MB max memory
-		file, header, err := r.FormFile("audioFile")
+		file, header, err := r.FormFile("pdfFile")
 		if err != nil {
-			http.Error(w, "Missing audio file", http.StatusBadRequest)
+			http.Error(w, "Missing PDF file", http.StatusBadRequest)
 			return
 		}
 		defer file.Close()
@@ -112,7 +112,7 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 	// Get jobs by status if specified
 	status := r.URL.Query().Get("status")
 	if status != "" {
-		var jobs []*models.AudioJob
+		var jobs []*models.PDFJob
 
 		switch models.JobStatus(status) {
 		case models.StatusPending:

@@ -14,8 +14,8 @@ const (
 	StatusFailed     JobStatus = "failed"
 )
 
-// AudioJob represents a job for processing an audio file
-type AudioJob struct {
+// PDFJob represents a job for processing an pdf file
+type PDFJob struct {
 	ID             string    `json:"id"`
 	SourceFile     string    `json:"source_file"`
 	OutputFile     string    `json:"output_file"`
