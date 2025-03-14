@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jupark12/karaoke-worker/models"
 	"github.com/jupark12/karaoke-worker/queue"
 	"github.com/jupark12/karaoke-worker/worker"
@@ -22,7 +23,7 @@ type Server struct {
 }
 
 // NewServer creates a new server instance
-func NewServer(queue *queue.PDFJobQueue, httpAddr string, numWorkers int) *Server {
+func NewServer(queue *queue.PDFJobQueue, httpAddr string, numWorkers int, dbPool *pgxpool.Pool) *Server {
 	server := &Server{
 		queue:    queue,
 		httpAddr: httpAddr,
@@ -32,7 +33,7 @@ func NewServer(queue *queue.PDFJobQueue, httpAddr string, numWorkers int) *Serve
 	// Initialize workers
 	for i := 0; i < numWorkers; i++ {
 		workerID := fmt.Sprintf("worker-%d", i+1)
-		server.workers[i] = worker.NewWorker(workerID, queue)
+		server.workers[i] = worker.NewWorker(workerID, queue, dbPool)
 	}
 
 	return server

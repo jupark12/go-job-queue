@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jupark12/karaoke-worker/models"
 	"github.com/jupark12/karaoke-worker/queue"
 	"github.com/ledongthuc/pdf"
@@ -22,15 +24,17 @@ type Worker struct {
 	ID         string
 	Queue      *queue.PDFJobQueue
 	Processing bool
+	DBPool     *pgxpool.Pool
 	mu         sync.Mutex
 }
 
 // NewWorker creates a new worker instance
-func NewWorker(id string, queue *queue.PDFJobQueue) *Worker {
+func NewWorker(id string, queue *queue.PDFJobQueue, dbPool *pgxpool.Pool) *Worker {
 
 	return &Worker{
-		ID:    id,
-		Queue: queue,
+		ID:     id,
+		Queue:  queue,
+		DBPool: dbPool,
 	}
 }
 
@@ -115,12 +119,10 @@ func (w *Worker) processBankStatement(job *models.PDFJob) error {
 		textFile := outDir + "/" + strings.TrimSuffix(filepath.Base(job.SourceFile), filepath.Ext(job.SourceFile)) + ".txt"
 
 		cmd := exec.Command("pdftotext", "-layout", job.SourceFile, textFile)
-		output, err := cmd.CombinedOutput()
+		_, err := cmd.CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("failed to convert PDF with pdftotext: %v", err)
 		}
-
-		print(output, "OUTPUT YAY")
 
 		// Read the content of the generated text file
 		content, err := os.ReadFile(textFile)
@@ -149,6 +151,11 @@ func (w *Worker) processBankStatement(job *models.PDFJob) error {
 		}
 	}
 
+	// Save transactions to database
+	if err := w.saveTransactionsToDatabase(job.ID, transactions); err != nil {
+		return fmt.Errorf("failed to save transactions to database: %v", err)
+	}
+
 	log.Printf("Transactions saved to %s", transactionFile)
 	log.Printf("Proccesed %d transactions", len(transactions))
 
@@ -159,7 +166,7 @@ func extractTransations(lines []string) []models.Transaction {
 	transactions := []models.Transaction{}
 	// This regex will match MM/DD/YY format (e.g., 02/06/25)
 	datePattern := regexp.MustCompile(`\d{2}/\d{2}/\d{2}`)
-	amountPattern := regexp.MustCompile(`\$?(\d{1,3}(,\d{3})*\.\d{2})`)
+	amountPattern := regexp.MustCompile(`-?\$?(\d{1,3}(,\d{3})*\.\d{2})`)
 
 	for _, line := range lines {
 		//Skip Headers, footers, and empty lines
@@ -168,7 +175,6 @@ func extractTransations(lines []string) []models.Transaction {
 		}
 
 		dateMatch := datePattern.FindString(line)
-		print(dateMatch, "DATE")
 		if dateMatch == "" {
 			continue
 		}
@@ -178,18 +184,38 @@ func extractTransations(lines []string) []models.Transaction {
 			continue
 		}
 
+		isNegative := strings.Contains(amountMatches[0], "-")
+
 		amountStr := strings.Replace(amountMatches[1], ",", "", -1)
 		amount, err := strconv.ParseFloat(amountStr, 64)
 		if err != nil {
 			continue
 		}
 
-		description := "SOME DESCRIPTION"
+		// Apply negative sign if needed
+		if isNegative {
+			amount = -amount
+		}
 
+		// Extract description as everything between date and amount
+		dateIndex := strings.Index(line, dateMatch) + len(dateMatch)
+		amountIndex := strings.Index(line, amountMatches[0])
+
+		var description string
+		if dateIndex < amountIndex {
+			// Normal case: date comes before amount
+			description = strings.TrimSpace(line[dateIndex:amountIndex])
+		} else {
+			// Handle case where amount might come before date (rare)
+			description = strings.TrimSpace(line[0:dateIndex])
+			if description == "" {
+				description = "TRANSACTION"
+			}
+		}
+
+		// Determine transaction type based on amount
 		transactionType := "debit"
-		if strings.Contains(strings.ToLower(line), "deposit") ||
-			strings.Contains(strings.ToLower(line), "credit") ||
-			strings.Contains(strings.ToLower(line), "payment received") {
+		if amount > 0 {
 			transactionType = "credit"
 		}
 
@@ -200,10 +226,56 @@ func extractTransations(lines []string) []models.Transaction {
 			Type:        transactionType,
 		}
 
-		print(transaction.Date, transaction.Amount)
-
 		transactions = append(transactions, transaction)
 	}
 
 	return transactions
+}
+
+// Add a function to save transactions to the database
+func (w *Worker) saveTransactionsToDatabase(jobID string, transactions []models.Transaction) error {
+	ctx := context.Background()
+
+	// Begin a transaction
+	tx, err := w.DBPool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %v", err)
+	}
+	defer tx.Rollback(ctx) // Rollback if we don't commit
+
+	// Create transactions table if it doesn't exist
+	_, err = tx.Exec(ctx, `
+        CREATE TABLE IF NOT EXISTS transactions (
+            id SERIAL PRIMARY KEY,
+            job_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            description TEXT NOT NULL,
+            amount FLOAT NOT NULL,
+            type TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    `)
+	if err != nil {
+		return fmt.Errorf("failed to create transactions table: %v", err)
+	}
+
+	// Insert each transaction
+	for _, transaction := range transactions {
+		_, err := tx.Exec(ctx, `
+            INSERT INTO transactions (job_id, date, description, amount, type)
+            VALUES ($1, $2, $3, $4, $5)
+        `, jobID, transaction.Date, transaction.Description, transaction.Amount, transaction.Type)
+
+		if err != nil {
+			return fmt.Errorf("failed to insert transaction: %v", err)
+		}
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	log.Printf("Saved %d transactions to database for job %s", len(transactions), jobID)
+	return nil
 }
