@@ -1,7 +1,9 @@
 package models
 
+import "time"
+
 type Transaction struct {
-	Date        string
+	Date        time.Time
 	Description string
 	Amount      float64
 	Type        string // "debit" or "credit"

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jupark12/karaoke-worker/models"
+	"github.com/jupark12/go-job-queue/models"
 )
 
 // PDFJobQueue manages the queue of pdf processing jobs

@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/jupark12/karaoke-worker/queue"
-	"github.com/jupark12/karaoke-worker/server"
+	"github.com/jupark12/go-job-queue/queue"
+	"github.com/jupark12/go-job-queue/server"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )

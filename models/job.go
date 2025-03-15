@@ -23,6 +23,7 @@ type PDFJob struct {
 	CreatedAt      time.Time `json:"created_at"`
 	StartedAt      time.Time `json:"started_at,omitempty"`
 	CompletedAt    time.Time `json:"completed_at,omitempty"`
+	UpdatedAt      time.Time `json:"updated_at,omitempty"`
 	ErrorMessage   string    `json:"error_message,omitempty"`
 	ProcessingNode string    `json:"processing_node,omitempty"`
 }

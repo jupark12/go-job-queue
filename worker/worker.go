@@ -14,10 +14,13 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jupark12/karaoke-worker/models"
-	"github.com/jupark12/karaoke-worker/queue"
+	"github.com/jupark12/go-job-queue/models"
+	"github.com/jupark12/go-job-queue/queue"
 	"github.com/ledongthuc/pdf"
 )
+
+// NotifyFunc is a function type for job notifications
+type NotifyFunc func(jobID string)
 
 // Worker represents a processing node that consumes jobs
 type Worker struct {
@@ -25,6 +28,7 @@ type Worker struct {
 	Queue      *queue.PDFJobQueue
 	Processing bool
 	DBPool     *pgxpool.Pool
+	notifyFunc NotifyFunc
 	mu         sync.Mutex
 }
 
@@ -36,6 +40,11 @@ func NewWorker(id string, queue *queue.PDFJobQueue, dbPool *pgxpool.Pool) *Worke
 		Queue:  queue,
 		DBPool: dbPool,
 	}
+}
+
+// SetNotifier sets the notification function
+func (w *Worker) SetNotifier(notifyFunc NotifyFunc) {
+	w.notifyFunc = notifyFunc
 }
 
 // Start begins processing jobs
@@ -62,6 +71,11 @@ func (w *Worker) Start() {
 
 			log.Printf("Worker %s processing job %s", w.ID, job.ID)
 
+			// Notify about job status change to processing
+			if w.notifyFunc != nil {
+				w.notifyFunc(job.ID)
+			}
+
 			// Process the job
 			err = w.processBankStatement(job)
 			if err != nil {
@@ -70,6 +84,11 @@ func (w *Worker) Start() {
 			} else {
 				log.Printf("Worker %s completed job %s", w.ID, job.ID)
 				w.Queue.CompleteJob(job.ID)
+			}
+
+			// Notify about job completion or failure
+			if w.notifyFunc != nil {
+				w.notifyFunc(job.ID)
 			}
 		}
 	}()
@@ -179,6 +198,12 @@ func extractTransations(lines []string) []models.Transaction {
 			continue
 		}
 
+		//Parse date to time object
+		parsedDate, err := time.Parse("01/02/06", dateMatch)
+		if err != nil {
+			continue
+		}
+
 		amountMatches := amountPattern.FindStringSubmatch(line)
 		if len(amountMatches) < 2 {
 			continue
@@ -220,7 +245,7 @@ func extractTransations(lines []string) []models.Transaction {
 		}
 
 		transaction := models.Transaction{
-			Date:        dateMatch,
+			Date:        parsedDate,
 			Amount:      amount,
 			Description: description,
 			Type:        transactionType,
@@ -248,7 +273,7 @@ func (w *Worker) saveTransactionsToDatabase(jobID string, transactions []models.
         CREATE TABLE IF NOT EXISTS transactions (
             id SERIAL PRIMARY KEY,
             job_id TEXT NOT NULL,
-            date TEXT NOT NULL,
+            date DATE NOT NULL,
             description TEXT NOT NULL,
             amount FLOAT NOT NULL,
             type TEXT NOT NULL,
@@ -261,10 +286,12 @@ func (w *Worker) saveTransactionsToDatabase(jobID string, transactions []models.
 
 	// Insert each transaction
 	for _, transaction := range transactions {
+		formattedDate := transaction.Date.Format("2006-01-02")
+
 		_, err := tx.Exec(ctx, `
             INSERT INTO transactions (job_id, date, description, amount, type)
             VALUES ($1, $2, $3, $4, $5)
-        `, jobID, transaction.Date, transaction.Description, transaction.Amount, transaction.Type)
+        `, jobID, formattedDate, transaction.Description, transaction.Amount, transaction.Type)
 
 		if err != nil {
 			return fmt.Errorf("failed to insert transaction: %v", err)
