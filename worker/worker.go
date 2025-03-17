@@ -171,7 +171,7 @@ func (w *Worker) processBankStatement(job *models.PDFJob) error {
 	}
 
 	// Save transactions to database
-	if err := w.saveTransactionsToDatabase(job.ID, transactions); err != nil {
+	if err := w.saveTransactionsToDatabase(job, transactions); err != nil {
 		return fmt.Errorf("failed to save transactions to database: %v", err)
 	}
 
@@ -258,7 +258,7 @@ func extractTransations(lines []string) []models.Transaction {
 }
 
 // Add a function to save transactions to the database
-func (w *Worker) saveTransactionsToDatabase(jobID string, transactions []models.Transaction) error {
+func (w *Worker) saveTransactionsToDatabase(job *models.PDFJob, transactions []models.Transaction) error {
 	ctx := context.Background()
 
 	// Begin a transaction
@@ -291,7 +291,7 @@ func (w *Worker) saveTransactionsToDatabase(jobID string, transactions []models.
 		_, err := tx.Exec(ctx, `
             INSERT INTO transactions (job_id, date, description, amount, type)
             VALUES ($1, $2, $3, $4, $5)
-        `, jobID, formattedDate, transaction.Description, transaction.Amount, transaction.Type)
+        `, job.ID, formattedDate, transaction.Description, transaction.Amount, transaction.Type)
 
 		if err != nil {
 			return fmt.Errorf("failed to insert transaction: %v", err)
@@ -303,6 +303,6 @@ func (w *Worker) saveTransactionsToDatabase(jobID string, transactions []models.
 		return fmt.Errorf("failed to commit transaction: %v", err)
 	}
 
-	log.Printf("Saved %d transactions to database for job %s", len(transactions), jobID)
+	log.Printf("Saved %d transactions to database for job %s", len(transactions), job.ID)
 	return nil
 }
